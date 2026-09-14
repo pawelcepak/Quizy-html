@@ -1,27 +1,40 @@
 # Szybka Klawiatura
 
-Spersonalizowany build Androidowej klawiatury oparty na AnySoftKeyboard.
+Własna klawiatura systemowa Android napisana od zera pod szybkie pisanie na telefonie.
 
-## v0.1
+## v0.1.0
 
-- zoptymalizowany polski układ QWERTY,
-- X i V usunięte z głównego rzędu,
-- X dostępne przez przytrzymanie C,
-- V dostępne przez przytrzymanie B,
-- polskie znaki z istniejących popupów układu polskiego,
-- podpowiedzi, autokorekta i uczenie słownictwa zapewniane przez silnik AnySoftKeyboard,
+- osobna aplikacja i osobny IME `Szybka Klawiatura`, bez AnySoftKeyboard,
+- duże klawisze i uproszczony układ,
+- X i V usunięte z głównego układu,
+- osobne profile `PRACA` i `NORMAL`,
+- trzy podpowiedzi z własnego słownika,
+- korekta na podstawie własnego słownika,
+- ekran dodawania słów do słownika profilu PRACA,
+- możliwość wyczyszczenia słownika PRACA,
+- duży przycisk `WKLEJ`, który wkleja aktualną zawartość schowka po dotknięciu,
+- dane słownika przechowywane lokalnie na telefonie,
 - automatyczny build APK w GitHub Actions.
+
+## Prywatność
+
+v0.1.0 nie zapisuje automatycznie całej wpisywanej treści i nie monitoruje automatycznie schowka. Słowa do profilu PRACA dodajesz świadomie z ekranu aplikacji, a `WKLEJ` odczytuje schowek dopiero po dotknięciu przycisku.
 
 ## Pobieranie
 
-Wejdź w Actions -> Build Android Keyboard -> najnowszy zielony przebieg -> Artifacts -> `SzybkaKlawiatura-v0.1-APK`.
+Wejdź w `Actions` -> `Build Szybka Klawiatura` -> najnowszy zielony przebieg -> `Artifacts` -> `SzybkaKlawiatura-v0.1.0-APK`.
 
-Po rozpakowaniu ZIP otrzymasz `SzybkaKlawiatura-v0.1-debug.apk`.
+Po rozpakowaniu ZIP otrzymasz `SzybkaKlawiatura-v0.1.0.apk`.
 
-## Xubuntu
+## Instalacja
 
-Do używania telefonu jako dodatkowego wejścia na laptopie zalecany jest KDE Connect i funkcja Remote Input. Fizyczna klawiatura laptopa może działać równolegle.
+1. Zainstaluj APK.
+2. Uruchom aplikację `Szybka Klawiatura`.
+3. Naciśnij `1. Włącz Szybką Klawiaturę` i zezwól na używanie klawiatury.
+4. Wróć do aplikacji i naciśnij `2. Wybierz klawiaturę`.
+5. Wybierz `Szybka Klawiatura`.
+6. Dodaj często używane słowa do profilu PRACA i zacznij testy.
 
-## Build
+## Build lokalny
 
-Workflow pobiera przypięty commit AnySoftKeyboard, nakłada `config/polish_speed.xml`, buduje wariant z dodatkami językowymi i publikuje APK jako artefakt Actions.
+Projekt wymaga JDK 17, Android SDK 35 i Gradle 8.7. Build debug: `gradle :app:assembleDebug`.
