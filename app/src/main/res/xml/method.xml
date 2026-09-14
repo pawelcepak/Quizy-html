@@ -4,6 +4,5 @@
     <subtype
         android:imeSubtypeLocale="pl_PL"
         android:imeSubtypeMode="keyboard"
-        android:imeSubtypeExtraValue="AsciiCapable"
-        android:label="Szybka Klawiatura PL" />
+        android:imeSubtypeExtraValue="AsciiCapable" />
 </input-method>
