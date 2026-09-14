@@ -4,9 +4,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 
-import morfologik.stemming.PolishStemmer;
+import morfologik.stemming.polish.PolishStemmer;
 
 /** Offline Polish validation based on Morfologik. No network/API key required. */
 public final class PolishLanguageCorrector {
