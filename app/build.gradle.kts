@@ -10,8 +10,8 @@ android {
         applicationId = "pl.szynolandia.szybkaklawiatura"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.6.0"
+        versionCode = 7
+        versionName = "0.7.0"
     }
 
     buildTypes {
@@ -24,4 +24,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    implementation("org.carrot2:morfologik-polish:2.1.9")
 }
