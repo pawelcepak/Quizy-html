@@ -1,11 +1,15 @@
 package pl.szynolandia.szybkaklawiatura;
 
+import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
-import java.text.Normalizer;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -14,7 +18,8 @@ import java.util.Set;
 
 public final class LearningStore extends SQLiteOpenHelper {
     private static final String DB_NAME = "szybka_klawiatura.db";
-    private static final int DB_VERSION = 1;
+    private static final int DB_VERSION = 2;
+    private static final int BACKUP_VERSION = 1;
 
     public LearningStore(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
@@ -22,14 +27,28 @@ public final class LearningStore extends SQLiteOpenHelper {
 
     @Override
     public void onCreate(SQLiteDatabase db) {
-        db.execSQL("CREATE TABLE words (profile TEXT NOT NULL, word TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 1, last_used INTEGER NOT NULL, PRIMARY KEY(profile, word))");
-        db.execSQL("CREATE TABLE bigrams (profile TEXT NOT NULL, prev_word TEXT NOT NULL, next_word TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 1, last_used INTEGER NOT NULL, PRIMARY KEY(profile, prev_word, next_word))");
-        db.execSQL("CREATE INDEX idx_words_profile_count ON words(profile, count DESC)");
-        db.execSQL("CREATE INDEX idx_bigrams_profile_prev_count ON bigrams(profile, prev_word, count DESC)");
+        createCoreTables(db);
+        createMetaTable(db);
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        // Migracje są addytywne: nigdy nie kasujemy tabel words/bigrams ani danych użytkownika.
+        if (oldVersion < 2) {
+            createMetaTable(db);
+        }
+    }
+
+    private static void createCoreTables(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS words (profile TEXT NOT NULL, word TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 1, last_used INTEGER NOT NULL, PRIMARY KEY(profile, word))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS bigrams (profile TEXT NOT NULL, prev_word TEXT NOT NULL, next_word TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 1, last_used INTEGER NOT NULL, PRIMARY KEY(profile, prev_word, next_word))");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_words_profile_count ON words(profile, count DESC)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_bigrams_profile_prev_count ON bigrams(profile, prev_word, count DESC)");
+    }
+
+    private static void createMetaTable(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+        db.execSQL("INSERT OR REPLACE INTO metadata(key,value) VALUES('schema_version','2')");
     }
 
     public void learn(String profile, String previousWord, String word) {
@@ -141,6 +160,102 @@ public final class LearningStore extends SQLiteOpenHelper {
         try (Cursor c = getReadableDatabase().rawQuery(
                 "SELECT COUNT(*) FROM words WHERE profile=?", new String[]{profile})) {
             return c.moveToFirst() ? c.getInt(0) : 0;
+        }
+    }
+
+    public String exportProfile(String profile) throws JSONException {
+        JSONObject root = new JSONObject();
+        root.put("format", "SzybkaKlawiaturaProfile");
+        root.put("backupVersion", BACKUP_VERSION);
+        root.put("profile", profile);
+        root.put("exportedAt", System.currentTimeMillis());
+
+        JSONArray words = new JSONArray();
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT word,count,last_used FROM words WHERE profile=? ORDER BY count DESC,last_used DESC",
+                new String[]{profile})) {
+            while (c.moveToNext()) {
+                JSONObject item = new JSONObject();
+                item.put("word", c.getString(0));
+                item.put("count", c.getInt(1));
+                item.put("lastUsed", c.getLong(2));
+                words.put(item);
+            }
+        }
+        root.put("words", words);
+
+        JSONArray bigrams = new JSONArray();
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT prev_word,next_word,count,last_used FROM bigrams WHERE profile=? ORDER BY count DESC,last_used DESC",
+                new String[]{profile})) {
+            while (c.moveToNext()) {
+                JSONObject item = new JSONObject();
+                item.put("prev", c.getString(0));
+                item.put("next", c.getString(1));
+                item.put("count", c.getInt(2));
+                item.put("lastUsed", c.getLong(3));
+                bigrams.put(item);
+            }
+        }
+        root.put("bigrams", bigrams);
+        return root.toString();
+    }
+
+    public void importProfile(String expectedProfile, String json, boolean replace) throws JSONException {
+        JSONObject root = new JSONObject(json);
+        if (!"SzybkaKlawiaturaProfile".equals(root.optString("format"))) {
+            throw new JSONException("Nieprawidłowy format kopii");
+        }
+        if (root.optInt("backupVersion", -1) > BACKUP_VERSION) {
+            throw new JSONException("Kopia pochodzi z nowszej wersji aplikacji");
+        }
+        String sourceProfile = root.optString("profile", expectedProfile);
+        if (!expectedProfile.equals(sourceProfile)) {
+            throw new JSONException("Kopia dotyczy innego profilu");
+        }
+
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            if (replace) {
+                db.delete("words", "profile=?", new String[]{expectedProfile});
+                db.delete("bigrams", "profile=?", new String[]{expectedProfile});
+            }
+
+            JSONArray words = root.optJSONArray("words");
+            if (words != null) {
+                for (int i = 0; i < words.length(); i++) {
+                    JSONObject item = words.getJSONObject(i);
+                    String word = normalizeWord(item.optString("word"));
+                    if (word.length() < 2) continue;
+                    ContentValues values = new ContentValues();
+                    values.put("profile", expectedProfile);
+                    values.put("word", word);
+                    values.put("count", Math.max(1, item.optInt("count", 1)));
+                    values.put("last_used", Math.max(0L, item.optLong("lastUsed", System.currentTimeMillis())));
+                    db.insertWithOnConflict("words", null, values, SQLiteDatabase.CONFLICT_REPLACE);
+                }
+            }
+
+            JSONArray bigrams = root.optJSONArray("bigrams");
+            if (bigrams != null) {
+                for (int i = 0; i < bigrams.length(); i++) {
+                    JSONObject item = bigrams.getJSONObject(i);
+                    String prev = normalizeWord(item.optString("prev"));
+                    String next = normalizeWord(item.optString("next"));
+                    if (prev.isEmpty() || next.isEmpty()) continue;
+                    ContentValues values = new ContentValues();
+                    values.put("profile", expectedProfile);
+                    values.put("prev_word", prev);
+                    values.put("next_word", next);
+                    values.put("count", Math.max(1, item.optInt("count", 1)));
+                    values.put("last_used", Math.max(0L, item.optLong("lastUsed", System.currentTimeMillis())));
+                    db.insertWithOnConflict("bigrams", null, values, SQLiteDatabase.CONFLICT_REPLACE);
+                }
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
         }
     }
 
