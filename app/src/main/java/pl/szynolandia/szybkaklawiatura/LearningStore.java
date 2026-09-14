@@ -20,6 +20,7 @@ public final class LearningStore extends SQLiteOpenHelper {
     private static final String DB_NAME = "szybka_klawiatura.db";
     private static final int DB_VERSION = 2;
     private static final int BACKUP_VERSION = 1;
+    private static final int MIN_SUGGEST_COUNT = 2;
 
     public LearningStore(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
@@ -33,10 +34,7 @@ public final class LearningStore extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // Migracje są addytywne: nigdy nie kasujemy tabel words/bigrams ani danych użytkownika.
-        if (oldVersion < 2) {
-            createMetaTable(db);
-        }
+        if (oldVersion < 2) createMetaTable(db);
     }
 
     private static void createCoreTables(SQLiteDatabase db) {
@@ -75,6 +73,20 @@ public final class LearningStore extends SQLiteOpenHelper {
         }
     }
 
+    public void forgetWord(String profile, String word) {
+        String clean = normalizeWord(word);
+        if (clean.isEmpty()) return;
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.delete("words", "profile=? AND word=?", new String[]{profile, clean});
+            db.delete("bigrams", "profile=? AND (prev_word=? OR next_word=?)", new String[]{profile, clean, clean});
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
     public List<String> suggest(String profile, String prefix, String previousWord, int limit) {
         Set<String> output = new LinkedHashSet<>();
         SQLiteDatabase db = getReadableDatabase();
@@ -83,24 +95,24 @@ public final class LearningStore extends SQLiteOpenHelper {
 
         if (cleanPrefix.isEmpty() && !prev.isEmpty()) {
             try (Cursor c = db.rawQuery(
-                    "SELECT next_word FROM bigrams WHERE profile=? AND prev_word=? ORDER BY count DESC,last_used DESC LIMIT ?",
-                    new String[]{profile, prev, String.valueOf(limit)})) {
+                    "SELECT next_word FROM bigrams WHERE profile=? AND prev_word=? AND count>=? ORDER BY count DESC,last_used DESC LIMIT ?",
+                    new String[]{profile, prev, String.valueOf(MIN_SUGGEST_COUNT), String.valueOf(limit)})) {
                 while (c.moveToNext()) output.add(c.getString(0));
             }
         }
 
         if (!cleanPrefix.isEmpty()) {
             try (Cursor c = db.rawQuery(
-                    "SELECT word FROM words WHERE profile=? AND word LIKE ? ORDER BY count DESC,last_used DESC LIMIT ?",
-                    new String[]{profile, cleanPrefix + "%", String.valueOf(limit * 2)})) {
+                    "SELECT word FROM words WHERE profile=? AND word LIKE ? AND count>=? ORDER BY count DESC,last_used DESC LIMIT ?",
+                    new String[]{profile, cleanPrefix + "%", String.valueOf(MIN_SUGGEST_COUNT), String.valueOf(limit * 2)})) {
                 while (c.moveToNext()) output.add(c.getString(0));
             }
         }
 
         if (output.size() < limit) {
             try (Cursor c = db.rawQuery(
-                    "SELECT word FROM words WHERE profile=? ORDER BY count DESC,last_used DESC LIMIT ?",
-                    new String[]{profile, String.valueOf(limit * 2)})) {
+                    "SELECT word FROM words WHERE profile=? AND count>=? ORDER BY count DESC,last_used DESC LIMIT ?",
+                    new String[]{profile, String.valueOf(MIN_SUGGEST_COUNT), String.valueOf(limit * 2)})) {
                 while (c.moveToNext()) output.add(c.getString(0));
             }
         }
@@ -116,7 +128,7 @@ public final class LearningStore extends SQLiteOpenHelper {
         double bestScore = Double.MAX_VALUE;
 
         try (Cursor c = db.rawQuery(
-                "SELECT word,count FROM words WHERE profile=? ORDER BY count DESC,last_used DESC LIMIT 400",
+                "SELECT word,count FROM words WHERE profile=? AND count>=2 ORDER BY count DESC,last_used DESC LIMIT 400",
                 new String[]{profile})) {
             while (c.moveToNext()) {
                 String candidate = c.getString(0);
@@ -203,16 +215,10 @@ public final class LearningStore extends SQLiteOpenHelper {
 
     public void importProfile(String expectedProfile, String json, boolean replace) throws JSONException {
         JSONObject root = new JSONObject(json);
-        if (!"SzybkaKlawiaturaProfile".equals(root.optString("format"))) {
-            throw new JSONException("Nieprawidłowy format kopii");
-        }
-        if (root.optInt("backupVersion", -1) > BACKUP_VERSION) {
-            throw new JSONException("Kopia pochodzi z nowszej wersji aplikacji");
-        }
+        if (!"SzybkaKlawiaturaProfile".equals(root.optString("format"))) throw new JSONException("Nieprawidłowy format kopii");
+        if (root.optInt("backupVersion", -1) > BACKUP_VERSION) throw new JSONException("Kopia pochodzi z nowszej wersji aplikacji");
         String sourceProfile = root.optString("profile", expectedProfile);
-        if (!expectedProfile.equals(sourceProfile)) {
-            throw new JSONException("Kopia dotyczy innego profilu");
-        }
+        if (!expectedProfile.equals(sourceProfile)) throw new JSONException("Kopia dotyczy innego profilu");
 
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
@@ -221,7 +227,6 @@ public final class LearningStore extends SQLiteOpenHelper {
                 db.delete("words", "profile=?", new String[]{expectedProfile});
                 db.delete("bigrams", "profile=?", new String[]{expectedProfile});
             }
-
             JSONArray words = root.optJSONArray("words");
             if (words != null) {
                 for (int i = 0; i < words.length(); i++) {
@@ -236,7 +241,6 @@ public final class LearningStore extends SQLiteOpenHelper {
                     db.insertWithOnConflict("words", null, values, SQLiteDatabase.CONFLICT_REPLACE);
                 }
             }
-
             JSONArray bigrams = root.optJSONArray("bigrams");
             if (bigrams != null) {
                 for (int i = 0; i < bigrams.length(); i++) {
