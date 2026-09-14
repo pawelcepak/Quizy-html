@@ -40,11 +40,11 @@ jobs:
       - name: Prepare APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/SzybkaKlawiatura-v0.5.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/SzybkaKlawiatura-v0.6.0.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SzybkaKlawiatura-v0.5.0-APK
-          path: dist/SzybkaKlawiatura-v0.5.0.apk
+          name: SzybkaKlawiatura-v0.6.0-APK
+          path: dist/SzybkaKlawiatura-v0.6.0.apk
           if-no-files-found: error
