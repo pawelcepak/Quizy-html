@@ -3,7 +3,14 @@ name: Build Android Keyboard
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'config/**'
+      - '.github/workflows/build-android.yml'
   workflow_dispatch:
+
+concurrency:
+  group: android-keyboard-main
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -19,15 +26,14 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Clone AnySoftKeyboard
+      - name: Clone pinned AnySoftKeyboard
         run: |
           git clone https://github.com/AnySoftKeyboard/AnySoftKeyboard.git upstream
           cd upstream
           git checkout 0f4cc6f09ffe39d1a7a943d5644d67803f6c2658
 
       - name: Apply custom Polish speed layout
-        run: |
-          cp config/polish_speed.xml upstream/addons/languages/polish/pack/src/main/res/xml/polish_qwerty.xml
+        run: cp config/polish_speed.xml upstream/addons/languages/polish/pack/src/main/res/xml/polish_qwerty.xml
 
       - name: Build APK
         working-directory: upstream
