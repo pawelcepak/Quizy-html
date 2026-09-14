@@ -86,16 +86,16 @@ public class FastKeyboardService extends InputMethodService {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(4), dp(3), dp(4), dp(5));
+        root.setPadding(dp(2), dp(2), dp(2), dp(4));
         root.setBackgroundColor(Color.rgb(29, 31, 40));
 
         LinearLayout suggestionRow = new LinearLayout(this);
         suggestionRow.setOrientation(LinearLayout.HORIZONTAL);
-        suggestionRow.setPadding(dp(2), 0, dp(2), dp(3));
+        suggestionRow.setPadding(dp(1), 0, dp(1), dp(3));
         for (int i = 0; i < 3; i++) {
             TextView text = new TextView(this);
             text.setGravity(Gravity.CENTER);
-            text.setTextSize(i == 1 ? 19 : 17);
+            text.setTextSize(i == 1 ? 21 : 19);
             text.setTextColor(Color.WHITE);
             text.setSingleLine(true);
             text.setEllipsize(TextUtils.TruncateAt.END);
@@ -114,7 +114,7 @@ public class FastKeyboardService extends InputMethodService {
                 }
                 return false;
             });
-            LinearLayout.LayoutParams suggestionParams = new LinearLayout.LayoutParams(0, dp(46), 1f);
+            LinearLayout.LayoutParams suggestionParams = new LinearLayout.LayoutParams(0, dp(52), 1f);
             suggestionParams.setMargins(dp(1), 0, dp(1), 0);
             suggestionRow.addView(text, suggestionParams);
             suggestionViews.add(text);
@@ -128,27 +128,27 @@ public class FastKeyboardService extends InputMethodService {
             row.setGravity(Gravity.CENTER_HORIZONTAL);
 
             if (rowIndex == 1) {
-                addSpacer(row, 0.45f);
+                addSpacer(row, 0.30f);
             } else if (rowIndex == 2) {
-                addSpacer(row, 0.85f);
+                addSpacer(row, 0.55f);
             }
 
             for (String key : rowKeys) {
                 Button button = makeKey(key);
                 float weight = keyWeight(key);
-                LinearLayout.LayoutParams keyParams = new LinearLayout.LayoutParams(0, dp(58), weight);
-                keyParams.setMargins(dp(2), dp(2), dp(2), dp(2));
+                LinearLayout.LayoutParams keyParams = new LinearLayout.LayoutParams(0, dp(72), weight);
+                keyParams.setMargins(dp(1), dp(2), dp(1), dp(2));
                 row.addView(button, keyParams);
                 if ("PROFIL".equals(key)) profileButton = button;
             }
 
             if (rowIndex == 1) {
-                addSpacer(row, 0.45f);
+                addSpacer(row, 0.30f);
             } else if (rowIndex == 2) {
-                addSpacer(row, 0.85f);
+                addSpacer(row, 0.55f);
             }
 
-            root.addView(row, new LinearLayout.LayoutParams(-1, dp(62)));
+            root.addView(row, new LinearLayout.LayoutParams(-1, dp(76)));
         }
 
         refreshSuggestions();
@@ -159,7 +159,7 @@ public class FastKeyboardService extends InputMethodService {
         Button button = new Button(this);
         button.setText("PROFIL".equals(key) ? profileLabel() : key);
         button.setGravity(Gravity.CENTER);
-        button.setTextSize(key.length() > 3 ? 12 : 20);
+        button.setTextSize(key.length() > 3 ? 13 : 24);
         button.setTextColor(Color.WHITE);
         button.setAllCaps(false);
         button.setMinWidth(0);
@@ -234,11 +234,11 @@ public class FastKeyboardService extends InputMethodService {
         for (String alt : alternatives) {
             Button choice = new Button(this);
             choice.setText(alt);
-            choice.setTextSize(22);
+            choice.setTextSize(24);
             choice.setTextColor(Color.WHITE);
             choice.setAllCaps(false);
             choice.setBackground(makeKeyBackground());
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(58), dp(58));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(66), dp(66));
             params.setMargins(dp(2), dp(2), dp(2), dp(2));
             container.addView(choice, params);
             choice.setOnClickListener(v -> {
@@ -252,7 +252,7 @@ public class FastKeyboardService extends InputMethodService {
         holder[0] = popup;
         popup.setOutsideTouchable(true);
         popup.setElevation(dp(8));
-        popup.showAsDropDown(anchor, 0, -dp(126), Gravity.CENTER_HORIZONTAL);
+        popup.showAsDropDown(anchor, 0, -dp(142), Gravity.CENTER_HORIZONTAL);
     }
 
     private void insertAlternative(String sourceKey, String value) {
@@ -347,12 +347,20 @@ public class FastKeyboardService extends InputMethodService {
 
         String typed = LearningStore.normalizeWord(token.toString());
         String finalWord = typed;
-        if (!typed.isEmpty() && prefs.getBoolean("autocorrect", true) && !store.isKnown(profile(), typed)) {
-            String correction = store.bestCorrection(profile(), typed);
-            if (!correction.equals(typed)) {
+
+        if (!typed.isEmpty() && prefs.getBoolean("autocorrect", true)) {
+            String polishCorrection = PolishAutocorrect.correct(typed);
+            if (!polishCorrection.equals(typed)) {
                 getCurrentInputConnection().deleteSurroundingText(token.length(), 0);
-                getCurrentInputConnection().commitText(correction, 1);
-                finalWord = correction;
+                getCurrentInputConnection().commitText(polishCorrection, 1);
+                finalWord = polishCorrection;
+            } else if (!store.isKnown(profile(), typed)) {
+                String learnedCorrection = store.bestCorrection(profile(), typed);
+                if (!learnedCorrection.equals(typed)) {
+                    getCurrentInputConnection().deleteSurroundingText(token.length(), 0);
+                    getCurrentInputConnection().commitText(learnedCorrection, 1);
+                    finalWord = learnedCorrection;
+                }
             }
         }
 
