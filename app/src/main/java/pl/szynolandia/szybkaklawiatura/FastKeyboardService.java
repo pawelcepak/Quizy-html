@@ -1,5 +1,8 @@
 package pl.szynolandia.szybkaklawiatura;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.inputmethodservice.InputMethodService;
 import android.text.TextUtils;
@@ -21,11 +24,12 @@ public class FastKeyboardService extends InputMethodService {
             {"q","w","e","r","t","y","u","i","o","p"},
             {"a","s","d","f","g","h","j","k","l"},
             {"z","c","b","n","m","⌫"},
-            {"PROFIL",","," ",".","⏎"}
+            {"PROFIL",","," ",".","WKLEJ","⏎"}
     };
 
     private LearningStore store;
     private SharedPreferences prefs;
+    private ClipboardManager clipboard;
     private final StringBuilder token = new StringBuilder();
     private final List<TextView> suggestionViews = new ArrayList<>();
     private Button profileButton;
@@ -34,6 +38,7 @@ public class FastKeyboardService extends InputMethodService {
         super.onCreate();
         store = new LearningStore(this);
         prefs = getSharedPreferences("keyboard_prefs", MODE_PRIVATE);
+        clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
     }
 
     @Override public View onCreateInputView() {
@@ -93,6 +98,8 @@ public class FastKeyboardService extends InputMethodService {
             getCurrentInputConnection().commitText("\n", 1);
         } else if ("PRACA".equals(key) || "NORMAL".equals(key)) {
             toggleProfile();
+        } else if ("WKLEJ".equals(key)) {
+            pasteClipboard();
         } else if (" ".equals(key)) {
             finishToken(true);
         } else if (",.".contains(key)) {
@@ -129,6 +136,18 @@ public class FastKeyboardService extends InputMethodService {
         token.setLength(0);
         token.append(word);
         refreshSuggestions();
+    }
+
+    private void pasteClipboard() {
+        if (clipboard == null || !clipboard.hasPrimaryClip() || getCurrentInputConnection() == null) return;
+        ClipData data = clipboard.getPrimaryClip();
+        if (data == null || data.getItemCount() == 0) return;
+        CharSequence text = data.getItemAt(0).coerceToText(this);
+        if (!TextUtils.isEmpty(text)) {
+            getCurrentInputConnection().commitText(text, 1);
+            token.setLength(0);
+            refreshSuggestions();
+        }
     }
 
     private void refreshSuggestions() {
