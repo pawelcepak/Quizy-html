@@ -5,9 +5,11 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.inputmethodservice.InputMethodService;
+import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
+import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -33,6 +35,8 @@ public class FastKeyboardService extends InputMethodService {
     private final StringBuilder token = new StringBuilder();
     private final List<TextView> suggestionViews = new ArrayList<>();
     private Button profileButton;
+    private String previousWord = "";
+    private boolean learningAllowedInField = true;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -81,9 +85,11 @@ public class FastKeyboardService extends InputMethodService {
         return root;
     }
 
-    @Override public void onStartInput(android.view.inputmethod.EditorInfo attribute, boolean restarting) {
+    @Override public void onStartInput(EditorInfo attribute, boolean restarting) {
         super.onStartInput(attribute, restarting);
         token.setLength(0);
+        previousWord = "";
+        learningAllowedInField = !isSensitiveField(attribute);
         refreshSuggestions();
     }
 
@@ -96,6 +102,8 @@ public class FastKeyboardService extends InputMethodService {
         } else if ("⏎".equals(key)) {
             finishToken(false);
             getCurrentInputConnection().commitText("\n", 1);
+            previousWord = "";
+            refreshSuggestions();
         } else if ("PRACA".equals(key) || "NORMAL".equals(key)) {
             toggleProfile();
         } else if ("WKLEJ".equals(key)) {
@@ -116,13 +124,24 @@ public class FastKeyboardService extends InputMethodService {
 
     private void finishToken(boolean addSpace) {
         String typed = LearningStore.normalizeWord(token.toString());
+        String finalWord = typed;
+
         if (!typed.isEmpty() && prefs.getBoolean("autocorrect", true) && !store.isKnown(profile(), typed)) {
             String correction = store.bestCorrection(profile(), typed);
             if (!correction.equals(typed)) {
                 getCurrentInputConnection().deleteSurroundingText(token.length(), 0);
                 getCurrentInputConnection().commitText(correction, 1);
+                finalWord = correction;
             }
         }
+
+        if (!finalWord.isEmpty()) {
+            if (PROFILE_WORK.equals(profile()) && learningAllowedInField) {
+                store.learn(PROFILE_WORK, previousWord, finalWord);
+            }
+            previousWord = finalWord;
+        }
+
         token.setLength(0);
         if (addSpace) getCurrentInputConnection().commitText(" ", 1);
         refreshSuggestions();
@@ -146,15 +165,29 @@ public class FastKeyboardService extends InputMethodService {
         if (!TextUtils.isEmpty(text)) {
             getCurrentInputConnection().commitText(text, 1);
             token.setLength(0);
+            previousWord = "";
             refreshSuggestions();
         }
     }
 
     private void refreshSuggestions() {
         if (suggestionViews.isEmpty() || store == null) return;
-        List<String> values = store.suggest(profile(), token.toString(), "", 3);
+        List<String> ranked = store.suggest(profile(), token.toString(), previousWord, 3);
+        String[] display = new String[]{"", "", ""};
+
+        if (ranked.size() == 1) {
+            display[1] = ranked.get(0);
+        } else if (ranked.size() == 2) {
+            display[0] = ranked.get(1);
+            display[1] = ranked.get(0);
+        } else if (ranked.size() >= 3) {
+            display[0] = ranked.get(1);
+            display[1] = ranked.get(0);
+            display[2] = ranked.get(2);
+        }
+
         for (int i = 0; i < suggestionViews.size(); i++) {
-            suggestionViews.get(i).setText(i < values.size() ? values.get(i) : "");
+            suggestionViews.get(i).setText(display[i]);
         }
         if (profileButton != null) profileButton.setText(profileLabel());
     }
@@ -163,7 +196,21 @@ public class FastKeyboardService extends InputMethodService {
         String next = PROFILE_WORK.equals(profile()) ? PROFILE_NORMAL : PROFILE_WORK;
         prefs.edit().putString("profile", next).apply();
         token.setLength(0);
+        previousWord = "";
         refreshSuggestions();
+    }
+
+    private boolean isSensitiveField(EditorInfo info) {
+        if (info == null) return false;
+        int inputClass = info.inputType & InputType.TYPE_MASK_CLASS;
+        int variation = info.inputType & InputType.TYPE_MASK_VARIATION;
+        if (inputClass == InputType.TYPE_CLASS_TEXT) {
+            return variation == InputType.TYPE_TEXT_VARIATION_PASSWORD
+                    || variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                    || variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD;
+        }
+        return inputClass == InputType.TYPE_CLASS_NUMBER
+                && variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD;
     }
 
     private String profile() { return prefs.getString("profile", PROFILE_WORK); }
