@@ -8,7 +8,7 @@ URL="https://alphacephei.com/vosk/models/vosk-model-small-pl-0.22.zip"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 sudo apt update
-sudo apt install -y python3 python3-venv python3-pip portaudio19-dev xdotool unzip
+sudo apt install -y python3 python3-venv python3-pip portaudio19-dev xdotool unzip curl
 
 mkdir -p "$BASE"
 python3 -m venv "$VENV"
